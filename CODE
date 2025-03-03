@@ -1,0 +1,226 @@
+--DROP TABLE camera CASCADE CONSTRAINTS;
+--DROP TABLE central CASCADE CONSTRAINTS;
+--DROP TABLE veiculo CASCADE CONSTRAINTS;
+--DROP TABLE semaforo CASCADE CONSTRAINTS;
+
+
+-- CRIAÇÃO TABELAS  ------------------------------------------------------------
+CREATE TABLE central (
+    id_central           INTEGER NOT NULL,
+    camera_id_camera     INTEGER NOT NULL,
+    semaforo_id_semaforo INTEGER NOT NULL,
+    status_camera        VARCHAR2(30) NOT NULL,
+    status_semaforo      VARCHAR2(30) NOT NULL
+);
+
+ALTER TABLE central ADD CONSTRAINT central_pk PRIMARY KEY ( id_central );
+
+
+CREATE TABLE camera (
+    id_camera             INTEGER NOT NULL,
+    veiculo_id_veiculo    INTEGER NOT NULL,
+    qt_passagem_veiculo      INTEGER NOT NULL,
+    data_pass_veiculo     TIMESTAMP  NOT NULL,
+    nm_avenida_id         VARCHAR2(50) NOT NULL
+    
+);
+
+ALTER TABLE camera ADD CONSTRAINT camera_pk PRIMARY KEY ( id_camera );
+
+
+CREATE TABLE semaforo (
+    id_semaforo    INTEGER NOT NULL,
+    local_semaforo VARCHAR2(30) NOT NULL
+);
+
+ALTER TABLE semaforo ADD CONSTRAINT semaforo_pk PRIMARY KEY ( id_semaforo );
+
+CREATE TABLE veiculo (
+    id_veiculo     INTEGER NOT NULL,
+    modelo_veiculo VARCHAR2(30)
+);
+
+ALTER TABLE veiculo ADD CONSTRAINT veiculo_pk PRIMARY KEY ( id_veiculo );
+
+
+-- CRIAÇÃO FK ------------------------------------------------------------------
+ALTER TABLE camera
+    ADD CONSTRAINT camera_veiculo_fk FOREIGN KEY ( veiculo_id_veiculo )
+        REFERENCES veiculo ( id_veiculo );
+
+ALTER TABLE central
+    ADD CONSTRAINT central_camera_fk FOREIGN KEY ( camera_id_camera )
+        REFERENCES camera ( id_camera );
+
+ALTER TABLE central
+    ADD CONSTRAINT central_semaforo_fk FOREIGN KEY ( semaforo_id_semaforo )
+        REFERENCES semaforo ( id_semaforo );
+        
+-- INSERÇÃO DE VALORES NAS TABELAS  --------------------------------------------   
+INSERT INTO veiculo (id_veiculo, modelo_veiculo ) VALUES (0002, 'Moto');
+INSERT INTO semaforo (id_semaforo, local_semaforo ) VALUES (011, 'AV. PRESIDENE');
+
+INSERT INTO camera (id_camera, veiculo_id_veiculo, qt_passagem_veiculo ,data_pass_veiculo,nm_avenida_id) 
+VALUES (123, 0002, 80, TO_TIMESTAMP('2024-09-23 08:12:00', 'YYYY-MM-DD HH24:MI:SS.FF'),'AV. PRESIDENE');
+
+INSERT INTO camera (id_camera, veiculo_id_veiculo, qt_passagem_veiculo ,data_pass_veiculo,nm_avenida_id) 
+VALUES (321, 0002, 10, TO_TIMESTAMP('2024-09-23 08:12:00', 'YYYY-MM-DD HH24:MI:SS.FF'),'AV. PRESIDENE');
+    
+
+INSERT INTO central (id_central, camera_id_camera, semaforo_id_semaforo, status_camera, status_semaforo ) 
+                VALUES (9, 123, 011, 'FUNCIONANDO', 'MANUTEN��O');
+     
+SELECT * FROM   veiculo;
+SELECT * FROM  semaforo;
+SELECT * FROM  camera;
+SELECT * FROM  central;
+----Package para saber quantidade total de passagem de veiculos  ---------------
+DROP PACKAGE gerenciar_pass_veiculo;
+
+CREATE PACKAGE gerenciar_pass_veiculo IS
+    FUNCTION somar_todas_pass (id_veiculo IN INT) RETURN INTEGER;
+END gerenciar_pass_veiculo;
+
+CREATE PACKAGE BODY gerenciar_pass_veiculo IS
+    FUNCTION somar_todas_pass (id_veiculo IN INT) RETURN INTEGER
+    IS 
+    total INTEGER;
+    BEGIN
+      SELECT SUM(qt_passagem_veiculo) 
+      INTO total
+      FROM camera
+      WHERE id_veiculo = id_veiculo; 
+      RETURN NVL (total, 0);
+    END somar_todas_pass;
+END gerenciar_pass_veiculo;
+/
+
+
+
+
+SET SERVEROUT ON;
+DECLARE
+resultado_soma_pass INTEGER;
+BEGIN 
+     resultado_soma_pass := gerenciar_pass_veiculo.somar_todas_pass(2);      
+     DBMS_OUTPUT.PUT_LINE ('Total de passagem de motos : '  || resultado_soma_pass);
+END;
+
+
+DROP PACKAGE gerenciar_status_camera;
+ 
+
+
+-- Pacote gerenciar_status_camera ----------------------------------------------
+DROP PACKAGE gerenciar_status_camera;
+
+CREATE PACKAGE gerenciar_status_camera IS
+    PROCEDURE atualizar_status(p_id_central IN INT, sts_camera IN VARCHAR2);
+END gerenciar_status_camera;
+/
+
+CREATE PACKAGE BODY gerenciar_status_camera IS
+    PROCEDURE atualizar_status(p_id_central IN INT, sts_camera IN VARCHAR2)
+    IS
+    BEGIN 
+        UPDATE central
+        SET status_camera = sts_camera  
+        WHERE id_central = p_id_central;     
+        COMMIT;
+    END atualizar_status;
+END gerenciar_status_camera;
+/
+
+
+
+SET SERVEROUT ON;
+DECLARE
+
+BEGIN 
+     gerenciar_status_camera.atualizar_status(9, 'MANUTENÇÃO');
+END;
+/
+
+
+SELECT * FROM  central;
+
+
+DROP PACKAGE gerenciar_status_semaforo;
+
+
+-- Pacote gerenciar_status_semaforo --------------------------------------------
+CREATE PACKAGE gerenciar_status_semaforo IS
+    PROCEDURE atualizar_status_semaforo(pp_id_central IN INT, sts_semaforo IN VARCHAR2);
+END gerenciar_status_semaforo;
+/
+
+CREATE PACKAGE BODY gerenciar_status_semaforo IS
+    PROCEDURE atualizar_status_semaforo(pp_id_central IN INT, sts_semaforo IN VARCHAR2)
+    IS
+    BEGIN 
+        UPDATE central
+        SET status_semaforo = sts_semaforo 
+        WHERE id_central = pp_id_central;     
+        COMMIT;
+    END atualizar_status_semaforo;
+END gerenciar_status_semaforo;
+/
+
+
+SET SERVEROUT ON;
+DECLARE
+
+BEGIN 
+     gerenciar_status_semaforo.atualizar_status_semaforo(9, 'EM FUNCIONAMENTO');
+END;
+/
+
+
+---------------------------------------------------------------------------------
+-- Cria��o Trigger
+--Insere automaticamente um novo registro na tabela central 
+-- sempre que um novo registro for inserido na tabela camera
+
+DROP TRIGGER trg_ins_central;
+DROP  SEQUENCE SEQ_CENTRAL ;
+
+CREATE SEQUENCE SEQ_CENTRAL START WITH 1 INCREMENT BY 1;
+
+
+CREATE OR REPLACE TRIGGER trg_ins_central
+AFTER INSERT ON camera
+FOR EACH ROW
+BEGIN
+  -- Inserindo na tabela central após inserção na tabela camera
+  INSERT INTO central (
+      id_central, 
+      camera_id_camera, 
+      semaforo_id_semaforo, 
+      status_camera, 
+      status_semaforo
+  )
+  VALUES (
+      SEQ_CENTRAL.NEXTVAL,   
+      :NEW.id_camera,       
+      1,                     
+      'Ativo',               
+      'Desconhecido'         
+  );
+END;
+/
+
+
+--  Inserir um veículo
+INSERT INTO veiculo (id_veiculo, modelo_veiculo)
+VALUES (1, 'Fusca');
+
+--  Inserir um semaforo
+INSERT INTO semaforo (id_semaforo, local_semaforo)
+VALUES (1, 'Centro');
+
+--  Inserir um registro na tabela camera
+INSERT INTO camera (id_camera, veiculo_id_veiculo, qt_passagem_veiculo, data_pass_veiculo, nm_avenida_id)
+VALUES (88, 1, 10, CURRENT_TIMESTAMP, 'Avenida Paulista');
+
+--  Verificar o conteúdo da tabela central
+SELECT * FROM central;
